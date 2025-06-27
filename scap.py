@@ -119,11 +119,13 @@ def scam(fname):
             G[index2, index2] += 1/(s * inductance)
             G[index1, index2] -= 1/(s * inductance)
             G[index2, index1] -= 1/(s * inductance)
-        if component_type == 'V':
-            # voltage source
-            voltage = line[3]
+        
+        # if component_type == 'V':
+        #     # voltage source
+        #     voltage = line[3]
 
-        if component_type == '':
+        # if component_type == '':
+    
 
 
 if __name__ == '__main__':
