@@ -17,9 +17,11 @@
 
 
 import sympy as sp
+import time
 
 
 def scam(fname):
+    start_time = time.time()
     # read the file
     f = open(fname, 'r')
     lines = f.readlines()
@@ -27,6 +29,7 @@ def scam(fname):
     N = 0   # number of nodes
     M = 0   # number of voltage sources
     l_M = []   # name of voltage sources
+    d_M = {}   # dictionary of voltage sources
 
     print('Netlist:')
     # get the number of nodes and voltage sources
@@ -36,9 +39,10 @@ def scam(fname):
         line = line.split()
         # get the type of the component
         component_type = line[0][0]
-        if component_type in ['V', 'E', 'H']:
-            M += 1
+        if component_type in ['V', 'E', 'H', 'O']:
             l_M.append(line[0])
+            d_M[line[0]] = M
+            M += 1
         node1, node2 = line[1], line[2]
         N = max(N, int(node1), int(node2))
 
@@ -145,13 +149,114 @@ def scam(fname):
 
             B[index1, M_] = 1
             B[index2, M_] = -1
-            
-            # add the voltage source to the circuit
             C[M_, index1] = 1
             C[M_, index2] = -1
             
             M_ += 1
+        
+        if component_type == 'E':
+            # voltage controlled voltage source
             
+            nodeC1 = int(line[3])
+            nodeC2 = int(line[4])
+            indexC1 = nodeC1 - 1
+            indexC2 = nodeC2 - 1
+
+            gain = sp.symbols(name)
+
+            C[M_, indexC1] += -gain
+            C[M_, indexC2] += gain
+
+            z[N+M_] = 0
+            # if connected to ground
+            if node1 == 0:
+                B[index2, M_] += -1
+                C[M_, index2] += -1
+                M_ += 1
+                continue
+            if node2 == 0:
+                B[index1, M_] += 1
+                C[M_, index1] += 1
+                M_ += 1
+                continue
+
+            B[index1, M_] += 1
+            B[index2, M_] += -1
+            C[M_, index1] += 1
+            C[M_, index2] += -1
+            
+            M_ += 1
+
+        if component_type == 'G':
+            # voltage controlled current source
+            
+            nodeC1 = int(line[3])
+            nodeC2 = int(line[4])
+            indexC1 = nodeC1 - 1
+            indexC2 = nodeC2 - 1
+
+            gain = sp.symbols(name)
+
+            # if connected to ground
+            if node1 == 0:
+                G[index2, indexC1] -= gain
+                G[index2, indexC2] += gain
+                continue
+            if node2 == 0:
+                G[index1, indexC1] += gain
+                G[index1, indexC2] -= gain
+                continue
+            
+            G[index1, indexC1] += gain
+            G[index1, indexC2] -= gain
+            G[index2, indexC1] -= gain
+            G[index2, indexC2] += gain
+
+        if component_type == 'H':
+            # current controlled voltage source
+            
+            nodeC = line[3]
+
+            gain = sp.symbols(name)
+
+            z[N+M_] = 0
+            D[M_, d_M[nodeC]] -= gain
+            # if connected to ground
+            if node1 == 0:
+                B[index2, M_] += -1
+                C[M_, index2] += -1
+                M_ += 1
+                continue
+            if node2 == 0:
+                B[index1, M_] += 1
+                C[M_, index1] += 1
+                M_ += 1
+                continue
+
+            B[index1, M_] += 1
+            B[index2, M_] += -1
+            C[M_, index1] += 1
+            C[M_, index2] += -1
+            
+            M_ += 1
+        
+        if component_type == 'F':
+            # voltage controlled current source
+            
+            nodeC = line[3]
+
+            gain = sp.symbols(name)
+
+            # if connected to ground
+            if node1 == 0:
+                B[index2, d_M[nodeC]] -= gain
+                continue
+            if node2 == 0:
+                B[index1, d_M[nodeC]] += gain
+                continue
+            
+            B[index1, d_M[nodeC]] += gain
+            B[index2, d_M[nodeC]] -= gain
 
         if component_type == 'I':
             current = sp.symbols(name)
@@ -165,6 +270,22 @@ def scam(fname):
             z[index1] += -current
             z[index2] += current
     
+        if component_type == 'O':
+            nodeO = int(line[3])
+            indexO = nodeO - 1
+            B[indexO, M_] = 1
+            if node1 == 0:
+                C[M_, index2] = -1
+                M_ += 1
+                continue
+            if node2 == 0:
+                C[M_, index1] = 1
+                M_ += 1
+                continue
+            B[indexO, M_] = 1
+            C[M_, index1] = 1
+            C[M_, index2] = -1
+            M_ += 1
     # print(G)
     # print(B)
     # print(C)
@@ -186,7 +307,7 @@ def scam(fname):
 
     j = sp.zeros(M, 1)
     for i in range(M):
-        j[i] = sp.symbols('i_' + l_M[i])
+        j[i] = sp.symbols('I_' + l_M[i])
 
     x = sp.Matrix(sp.BlockMatrix([
         [v],
@@ -205,8 +326,9 @@ def scam(fname):
     sp.pprint(sp.solve(A * x - z, x))
     print()
 
+    print('Elapsed time is ', time.time() - start_time, 'seconds')
 
 
 
 if __name__ == '__main__':
-    scam(r'examples/example6.cir')
+    scam(r'examples/exampleF.cir')
