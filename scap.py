@@ -18,6 +18,7 @@
 
 import sympy as sp
 
+
 def scam(fname):
     # read the file
     f = open(fname, 'r')
@@ -25,10 +26,12 @@ def scam(fname):
     
     N = 0   # number of nodes
     M = 0   # number of voltage sources
-    l_M = []   # list of voltage sources
+    l_M = []   # name of voltage sources
 
+    print('Netlist:')
     # get the number of nodes and voltage sources
     for line in lines:
+        print(line, end='')
         # parse the line
         line = line.split()
         # get the type of the component
@@ -39,13 +42,20 @@ def scam(fname):
         node1, node2 = line[1], line[2]
         N = max(N, int(node1), int(node2))
 
+    print()
+    print()
+    # print('Number of nodes: ', N)
+    # print('Number of voltage sources: ', M)
+    # print()
+
     # initialize the matrices
     G = sp.zeros(N, N)   # conductance matrix
     B = sp.zeros(N, M)   # voltage source matrix 1
     C = sp.zeros(M, N)   # voltage source matrix 2
-    D = sp.zeros(N, M)   # controlled source matrix
+    D = sp.zeros(M, M)   # controlled source matrix
+    z = sp.zeros(N+M, 1)
     s = sp.symbols('s')  # laplace variable
-
+    M_ = 0               # number of controlled sources
     for line in lines:
         # parse the line
         line = line.split()
@@ -59,10 +69,7 @@ def scam(fname):
         if component_type == 'R':
             # resistor
             resistance = line[3]
-            if resistance == 'Symbolic':
-                resistance = sp.symbols(name)
-            else:
-                resistance = float(resistance)
+            resistance = sp.symbols(name)
             
             # if connected to ground
             if node1 == 0:
@@ -82,10 +89,8 @@ def scam(fname):
         if component_type == 'C':
             # capacitor
             capacitance = line[3]
-            if capacitance == 'Symbolic':
-                capacitance = sp.symbols(name)
-            else:
-                capacitance = float(capacitance)
+
+            capacitance = sp.symbols(name)
 
             # if connected to ground
             if node1 == 0:
@@ -103,10 +108,8 @@ def scam(fname):
         if component_type == 'L':
             # inductor
             inductance = line[3]
-            if inductance == 'Symbolic':
-                inductance = sp.symbols(name)
-            else:
-                inductance = float(inductance)
+
+            inductance = sp.symbols(name)
             # if connected to ground
             if node1 == 0:
                 G[index2, index2] += 1/(s * inductance)
@@ -120,13 +123,90 @@ def scam(fname):
             G[index1, index2] -= 1/(s * inductance)
             G[index2, index1] -= 1/(s * inductance)
         
-        # if component_type == 'V':
-        #     # voltage source
-        #     voltage = line[3]
+        if component_type == 'V':
+            # voltage source
+            
+            voltage = sp.symbols(name)
+            
+            # print(index1, index2)
+            # print(node1, node2)
+            z[N+M_] = voltage
+            # if connected to ground
+            if node1 == 0:
+                B[index2, M_] = -1
+                C[M_, index2] = -1
+                M_ += 1
+                continue
+            if node2 == 0:
+                B[index1, M_] = 1
+                C[M_, index1] = 1
+                M_ += 1
+                continue
 
-        # if component_type == '':
+            B[index1, M_] = 1
+            B[index2, M_] = -1
+            
+            # add the voltage source to the circuit
+            C[M_, index1] = 1
+            C[M_, index2] = -1
+            
+            M_ += 1
+            
+
+        if component_type == 'I':
+            current = sp.symbols(name)
+            # if connected to ground
+            if node1 == 0:
+                z[index2] += current
+                continue
+            if node2 == 0:
+                z[index1] += -current
+                continue
+            z[index1] += -current
+            z[index2] += current
     
+    # print(G)
+    # print(B)
+    # print(C)
+    # print(D)
+
+
+    A = sp.Matrix(sp.BlockMatrix([
+        [G, B],
+        [C, D]
+    ]))
+    
+    print('The A matrix:')
+    sp.pprint(A)
+    print()
+
+    v = sp.zeros(N, 1)
+    for i in range(N):
+        v[i] = sp.symbols('v_' + str(i+1))
+
+    j = sp.zeros(M, 1)
+    for i in range(M):
+        j[i] = sp.symbols('i_' + l_M[i])
+
+    x = sp.Matrix(sp.BlockMatrix([
+        [v],
+        [j]
+    ]))
+
+    print('The x matrix:')
+    sp.pprint(x)
+    print()
+
+    print('The z matrix:')
+    sp.pprint(z)
+    print()
+
+    print("The solution:")
+    sp.pprint(sp.solve(A * x - z, x))
+    print()
+
+
 
 
 if __name__ == '__main__':
-    scam(r'examples/example0.cir')
+    scam(r'examples/example6.cir')
